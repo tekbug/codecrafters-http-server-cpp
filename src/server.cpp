@@ -10,17 +10,17 @@
 #include <netdb.h>
 #include <thread>
 #include <vector>
-
+#include <fstream>
 
 /*
- * Every comment you read on this is made by the bots. Haven't had time to seat and write one.
+ * Most of the structured comments you read on this is made by the bots. Will update after finishing up the entire thing.
  * Feel free to use this codebase as however you see fit. Just for learning, and shortcutting a lot of things.
  * By tekbug
  */
 
 
 
-void concurrent_users(int client) {
+void concurrent_users(int client, const std::string &dir) {
   char buffer[1024];
   int client_rd = read(client, buffer, 1024);
   buffer[client_rd] = '\0';
@@ -59,9 +59,20 @@ void concurrent_users(int client) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(agent_str.size()) + "\r\n\r\n" + agent_str;
     std::cout << response;
     bsend = send(client, response.c_str(), response.size(), 0);
-  }
-
-  else {
+  } else if(path.find("/files") == 0) {
+    std::string req_path = dir + path.substr(6);
+    std::ifstream stream(req_path);
+    if(stream.good()) {
+      std::stringstream file_content;
+      file_content << stream.rdbuf();
+      std::stringstream respond("");
+      std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(file_content.str().length()) + "\r\n\r\n" + file_content.str() + "\r\n";
+      send(client, response.c_str(), response.size(), 0);
+    } else {
+      std::string response="HTTP/1.1 404 Not Found\r\n\r\n";
+      send(client, response.c_str(), response.size(), 0);
+    }
+  } else {
     std::string response = "HTTP/1.1 404 Not Found\r\n\r\n";
     bsend = send(client, response.c_str(), response.size(), 0);
   }
@@ -78,6 +89,16 @@ int main(int argc, char **argv) {
 
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+
+  /*
+   * the dir is used to bind the flag to the request
+   */
+
+  std::string dir;
+
+  if(argc == 3 && strcmp(argv[1], "--directory") == 0) {
+    dir = argv[2];
+  }
 
   /**
    * file descriptor -> fd (explanation from our lords and saviours - codellama-7b, and GPT-4o)
@@ -178,7 +199,7 @@ int main(int argc, char **argv) {
 
   std::cout << "Waiting for a client to connect...\n";
 
-  //TODO: Send a 200 OK, Extract URL path, Parse the URL, Respond with RequestBody, and Respond with 404 for invalid URLs
+  //TODO: Send a 200 OK, Extract URL path, Parse the URL, Respond with RequestBody, Respond with 404 for invalid URLs, Read files
 
   /*
      * This code handles reading and parsing the HTTP request received from the client.
@@ -224,6 +245,8 @@ int main(int argc, char **argv) {
       close(server_fd);
       return 1;
     }
-    threads.emplace_back(concurrent_users, client_fd);
+    threads.emplace_back([client_fd, dir]() {
+      concurrent_users(client_fd, dir);
+    });
   }
 }
