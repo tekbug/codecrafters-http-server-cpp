@@ -49,16 +49,6 @@ int main(int argc, char **argv) {
   // Respond with 200
   int client = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
 
-  // std::string message = "HTTP/1.1 200 OK\r\n\r\n";
-  //
-  // int sendMsg = send(client, message.c_str(), message.length(), 0);
-  //
-  // if(sendMsg < 0) {
-  //   std::cerr << "Error occured";
-  // } else {
-  //   std::cout << message;
-  // }
-
   // extract URL path
   std::string client_message(1024, '\0');
 
