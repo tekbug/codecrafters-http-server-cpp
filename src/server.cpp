@@ -8,7 +8,71 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
+#include <vector>
 
+
+/*
+ * Every comment you read on this is made by the bots. Haven't had time to seat and write one.
+ * Feel free to use this codebase as however you see fit. Just for learning, and shortcutting a lot of things.
+ * By tekbug
+ */
+
+
+
+void concurrent_users(int client) {
+  char buffer[1024];
+  int client_rd = read(client, buffer, 1024);
+  buffer[client_rd] = '\0';
+
+  std::string path;
+  std::string request(buffer);
+
+  ssize_t req_method = request.find(' ');
+  if(req_method != std::string::npos) {
+    ssize_t start_pos = req_method + 1;
+    ssize_t end_pos = request.find(' ', start_pos);
+
+    if(end_pos != std::string::npos) {
+      path = request.substr(start_pos, end_pos - start_pos);
+    }
+  }
+
+  ssize_t bsend;
+  ssize_t agent = request.find("User-Agent:");
+
+  if(path == "/") {
+    std::string response = "HTTP/1.1 200 OK\r\n\r\n";
+    bsend = send(client, response.c_str(), response.size(), 0);
+  } else if (path.find("/echo/") == 0) {
+    std::string req_path = path.substr(6);
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
+    bsend = send(client, response.c_str(), response.size(), 0);
+  } else if (path.find("/user-agent") == 0) {
+    std::string agent_str;
+    if(agent != std::string::npos) {
+      ssize_t end = request.find("\r\n", agent);
+      if(end != std::string::npos) {
+        agent_str = request.substr(agent + 12, end - (agent + 12));
+      }
+    }
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(agent_str.size()) + "\r\n\r\n" + agent_str;
+    std::cout << response;
+    bsend = send(client, response.c_str(), response.size(), 0);
+  }
+
+  else {
+    std::string response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    bsend = send(client, response.c_str(), response.size(), 0);
+  }
+
+  if(bsend < 0) {
+    std::cerr << "Error occurred sending request to the server";
+    close(client);
+  }
+
+  close(client);
+}
 
 int main(int argc, char **argv) {
 
@@ -16,7 +80,7 @@ int main(int argc, char **argv) {
   std::cerr << std::unitbuf;
 
   /**
-   * file descriptor -> fd (from our lord and saviour - codellama-7b, and GPT-4o)
+   * file descriptor -> fd (explanation from our lords and saviours - codellama-7b, and GPT-4o)
    *
    * In computing, particularly in the context of developing an HTTP server, "fd" stands for "file descriptor."
    * A file descriptor is an integer that uniquely identifies an open file in the operating system.
@@ -114,18 +178,7 @@ int main(int argc, char **argv) {
 
   std::cout << "Waiting for a client to connect...\n";
 
-  // Accept 200 OK
-  int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
-
-  if(client_fd < 0) {
-    std::cerr << "error occurred in client connection";
-    close(server_fd);
-    return 1;
-  }
-
-  std::cout << "Client connected\n";
-
-  //TODO: Extract URL path, Parse the URL, Respond with RequestBody, and Respond with 404 for error pages
+  //TODO: Send a 200 OK, Extract URL path, Parse the URL, Respond with RequestBody, and Respond with 404 for invalid URLs
 
   /*
      * This code handles reading and parsing the HTTP request received from the client.
@@ -160,61 +213,17 @@ int main(int argc, char **argv) {
      *        starting at `start_ptr` and extending to `end_ptr - start_ptr`, which represents the URL path.
  */
 
-  char buffer[1024];
+  std::vector<std::thread> threads;
 
-  int client_rd = read(client_fd, buffer, 1024);
+  while(true) {
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
 
-
-  buffer[client_rd] = '\0';
-
-  std::string path;
-
-  std::string request(buffer);
-
-  ssize_t req_method = request.find(' ');
-  if(req_method != std::string::npos) {
-    auto start_ptr = req_method + 1;
-    auto end_ptr = request.find(' ', start_ptr);
-
-    if(end_ptr != std::string::npos) {
-      path = request.substr(start_ptr, end_ptr - start_ptr);
+    if(client_fd < 0) {
+      std::cerr << "error occurred in client connection";
+      close(client_fd);
+      close(server_fd);
+      return 1;
     }
+    threads.emplace_back(concurrent_users, client_fd);
   }
-
-  ssize_t bsend;
-  ssize_t agent = request.find("User-Agent:");
-
-  if(path == "/") {
-    std::string response = "HTTP/1.1 200 OK\r\n\r\n";
-    bsend = send(client_fd, response.c_str(), response.size(), 0);
-  } else if (path.find("/echo/") == 0) {
-    std::string req_path = path.substr(6);
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
-    bsend = send(client_fd, response.c_str(), response.size(), 0);
-  } else if (path.find("/user-agent") == 0) {
-    std::string agent_str;
-    if(agent != std::string::npos) {
-      auto end_pos = request.find("\r\n", agent);
-      if(end_pos != std::string::npos) {
-        agent_str = request.substr(agent + 12, end_pos - (agent + 12));
-      }
-    }
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(agent_str.size()) + "\r\n\r\n" + agent_str;
-    bsend = send(client_fd, response.c_str(), response.size(), 0);
-  }
-
-  else {
-    std::string response = "HTTP/1.1 404 Not Found\r\n\r\n";
-    bsend = send(client_fd, response.c_str(), response.size(), 0);
-  }
-
-  if(bsend < 0) {
-    std::cerr << "Error occurred sending request to the server";
-    close(client_fd);
-    close(server_fd);
-  }
-
-  close(client_fd);
-  close(server_fd);
-  return 0;
 }
