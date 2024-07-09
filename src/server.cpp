@@ -50,7 +50,6 @@ int main(int argc, char **argv) {
   std::cout << "Waiting for a client to connect...\n";
 
   // Accept 200 OK
-
   int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
 
   if(client_fd < 0) {
@@ -61,6 +60,8 @@ int main(int argc, char **argv) {
 
   std::cout << "Client connected\n";
 
+
+  // Extract URL Path and Respond with 404
   std::string client_req(1024, '\0');
 
   ssize_t recv_req = recv(client_fd, (void *)&client_req[0], client_req.max_size(), 0);
@@ -74,7 +75,7 @@ int main(int argc, char **argv) {
   std::cerr << "Client Message (length: " << client_req.size() << ")" << std::endl;
   std::clog << client_req << std::endl;
 
-  std::string response = client_req.starts_with("GET / HTTP/1.1\r\n") ? "HTTP/1.1 200 OK\r\n\r\n" : "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+  std::string response = client_req.starts_with("GET / HTTP/1.1\r\n") ? "HTTP/1.1 200 OK\r\n\r\n" : "HTTP/1.1 404 Not Found\r\n\r\n";
 
   ssize_t sent_req = send(client_fd, response.c_str(), response.size(),0);
 
