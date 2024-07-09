@@ -1,12 +1,14 @@
 #include <iostream>
 #include <cstdlib>
 #include <string>
+#include <sstream>
 #include <cstring>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+
 
 int main(int argc, char **argv) {
 
@@ -60,30 +62,55 @@ int main(int argc, char **argv) {
 
   std::cout << "Client connected\n";
 
+  // Extract URL path, Parse the URL, Respond with RequestBody, and Respond with 404 for error pages
 
-  // Extract URL Path and Respond with 404
-  std::string client_req(1024, '\0');
+  // setting buffer
+  char buffer[1024];
 
-  ssize_t recv_req = recv(client_fd, (void *)&client_req[0], client_req.max_size(), 0);
+  // reading client request, and setting the byte to the buffer and also setting the length of the buffer to 1024
+  int client_rd = read(client_fd, buffer, 1024);
 
-  if(recv_req < 0) {
-    std::cerr << "error occurred in receiving request";
-    close(server_fd);
-    return 1;
+  // empty buffer init
+  buffer[client_rd] = '\0';
+
+  std::string path;
+
+  std::string request(buffer);
+
+  ssize_t req_method = request.find(' ');
+
+  /*
+   * So what we basically expect is to get "RequestMethod path/{string} Status" for eg: "GET / HTTP/1.1 200 OK"
+   * in order to be able to find this, we gotta parse the request and find the gaps and stuff
+   */
+  if(req_method != std::string::npos) {
+    auto start_ptr = req_method + 1;
+    auto end_ptr = request.find(' ', start_ptr);
+
+    if(end_ptr != std::string::npos) {
+      path = request.substr(start_ptr, end_ptr - start_ptr);
+    }
   }
 
-  std::cerr << "Client Message (length: " << client_req.size() << ")" << std::endl;
-  std::clog << client_req << std::endl;
+  // byte that is going to be sent to the server
+  ssize_t bsend;
 
-  std::string response = client_req.starts_with("GET / HTTP/1.1\r\n") ? "HTTP/1.1 200 OK\r\n\r\n" : "HTTP/1.1 404 Not Found\r\n\r\n";
+  if(path == "/") {
+    std::string response = "HTTP/1.1 200 OK\r\n\r\n";
+    bsend = send(client_fd, response.c_str(), response.size(), 0);
+  } else if (path.find("/echo/") == 0) {
+    std::string req_path = path.substr(6);
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
+    bsend = send(client_fd, response.c_str(), response.size(), 0);
+  } else {
+    std::string response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    bsend = send(client_fd, response.c_str(), response.size(), 0);
+  }
 
-  ssize_t sent_req = send(client_fd, response.c_str(), response.size(),0);
-
-  if(sent_req < 0) {
-   std::cerr << "error occured in sending request to the server";
+  if(bsend < 0) {
+    std::cerr << "Error occurred sending request to the server";
     close(client_fd);
     close(server_fd);
-    return 1;
   }
 
   close(client_fd);
