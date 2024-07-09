@@ -21,14 +21,20 @@
 
 
 void concurrent_users(int client, const std::string &dir) {
-  char buffer[1024];
-  int client_rd = read(client, buffer, 1024);
+  char buffer[4096];
+  int client_rd = read(client, buffer, 4096);
   buffer[client_rd] = '\0';
 
   std::string path;
   std::string request(buffer);
 
+
   ssize_t req_method = request.find(' ');
+  std::string method;
+  if(req_method !=std::string::npos) {
+    method = request.substr(0, req_method);
+  }
+
   if(req_method != std::string::npos) {
     ssize_t start_pos = req_method + 1;
     ssize_t end_pos = request.find(' ', start_pos);
@@ -38,17 +44,27 @@ void concurrent_users(int client, const std::string &dir) {
     }
   }
 
+  std::string body;
+  ssize_t body_start = request.find("\r\n\r\n");
+  if (body_start != std::string::npos) {
+    body = request.substr(body_start + 4);
+  }
+
   ssize_t bsend;
   ssize_t agent = request.find("User-Agent:");
 
   if(path == "/") {
     std::string response = "HTTP/1.1 200 OK\r\n\r\n";
     bsend = send(client, response.c_str(), response.size(), 0);
-  } else if (path.find("/echo/") == 0) {
+  }
+
+  else if (path.find("/echo/") == 0) {
     std::string req_path = path.substr(6);
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
     bsend = send(client, response.c_str(), response.size(), 0);
-  } else if (path.find("/user-agent") == 0) {
+  }
+
+  else if (path.find("/user-agent") == 0) {
     std::string agent_str;
     if(agent != std::string::npos) {
       ssize_t end = request.find("\r\n", agent);
@@ -59,20 +75,35 @@ void concurrent_users(int client, const std::string &dir) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(agent_str.size()) + "\r\n\r\n" + agent_str;
     std::cout << response;
     bsend = send(client, response.c_str(), response.size(), 0);
-  } else if(path.find("/files") == 0) {
+  }
+
+  else if (method == "POST" && path.find("/files") == 0) {
+    std::string req_path = dir + path.substr(7);
+    std::ofstream wStream(req_path);
+    if (wStream.good()) {
+      wStream << body;
+      wStream.close();
+      std::string response = "HTTP/1.1 201 Created\r\n\r\n";
+      bsend = send(client, response.c_str(), response.size(), 0);
+    }
+  }
+
+  else if(path.find("/files/") == 0) {
     std::string req_path = dir + path.substr(6);
-    std::ifstream stream(req_path);
-    if(stream.good()) {
-      std::stringstream file_content;
-      file_content << stream.rdbuf();
+    std::ifstream rStream(req_path);
+    if(rStream.good()) {
+      std::stringstream ifs_file_content;
+      ifs_file_content << rStream.rdbuf();
       std::stringstream respond("");
-      std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(file_content.str().length()) + "\r\n\r\n" + file_content.str() + "\r\n";
+      std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(ifs_file_content.str().length()) + "\r\n\r\n" + ifs_file_content.str() + "\r\n";
       send(client, response.c_str(), response.size(), 0);
     } else {
       std::string response="HTTP/1.1 404 Not Found\r\n\r\n";
       send(client, response.c_str(), response.size(), 0);
     }
-  } else {
+  }
+
+  else {
     std::string response = "HTTP/1.1 404 Not Found\r\n\r\n";
     bsend = send(client, response.c_str(), response.size(), 0);
   }
