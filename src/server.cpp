@@ -52,6 +52,7 @@ void concurrent_users(int client, const std::string &dir) {
 
   ssize_t bsend;
   ssize_t agent = request.find("User-Agent:");
+  ssize_t coding = request.find("Accept-Encoding:");
 
   if(path == "/") {
     std::string response = "HTTP/1.1 200 OK\r\n\r\n";
@@ -60,8 +61,26 @@ void concurrent_users(int client, const std::string &dir) {
 
   else if (path.find("/echo/") == 0) {
     std::string req_path = path.substr(6);
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
-    bsend = send(client, response.c_str(), response.size(), 0);
+    std::string code_string;
+    bool zipSupport;
+
+    if(coding != std::string::npos) {
+      ssize_t end = request.find("\r\n", coding);
+
+      if(end != std::string::npos) {
+        code_string = request.substr(coding + 16, end - (coding + 16));
+        if(code_string.find("gzip") != std::string::npos) {
+          zipSupport = true;
+        }
+      }
+    }
+    if(zipSupport) {
+      std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
+      bsend = send(client, response.c_str(), response.size(), 0);
+    } else {
+      std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(req_path.size()) + "\r\n\r\n" + req_path;
+      bsend = send(client, response.c_str(), response.size(), 0);
+    }
   }
 
   else if (path.find("/user-agent") == 0) {
