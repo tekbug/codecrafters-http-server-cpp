@@ -64,6 +64,8 @@ void concurrent_users(int client, const std::string &dir) {
     std::string code_string;
     bool zipSupport;
 
+    // works for both HTTP compression and for multiple compression scheme as it finds the gzip
+
     if(coding != std::string::npos) {
       ssize_t end = request.find("\r\n", coding);
 
